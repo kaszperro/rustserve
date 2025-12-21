@@ -17,7 +17,7 @@ where
 }
 
 pub trait RouteHandler: Send + Sync + 'static {
-    fn handle(&self, request: &Request) -> Option<Response>;
+    fn handle(&self, prefix: &str, request: &Request) -> Option<Response>;
 }
 
 pub struct Router {
@@ -32,12 +32,22 @@ struct Route {
 }
 
 impl RouteHandler for Route {
-    fn handle(&self, request: &Request) -> Option<Response> {
-        let is_matching = self.path == request.path() && self.method == *request.method();
+    fn handle(&self, prefix: &str, request: &Request) -> Option<Response> {
+        let route_path = format!("{}{}", prefix, self.path);
+        let is_matching = request.path() == route_path && self.method == *request.method();
         if !is_matching {
             return None;
         }
         Some(self.handler.handle(request))
+    }
+}
+
+impl RouteHandler for Router {
+    fn handle(&self, prefix: &str, request: &Request) -> Option<Response> {
+        let prefix = format!("{}{}", prefix, self.prefix);
+        self.routes
+            .iter()
+            .find_map(|route| route.handle(&prefix, request))
     }
 }
 
@@ -98,9 +108,14 @@ impl Router {
         self.route(path, Method::Delete, handler)
     }
 
+    pub fn nested(mut self, router: Router) -> Self {
+        self.routes.push(Box::new(router));
+        self
+    }
+
     pub(crate) fn handle(&self, request: &Request) -> Response {
         for route in &self.routes {
-            if let Some(response) = route.handle(request) {
+            if let Some(response) = route.handle(&self.prefix, request) {
                 return response;
             }
         }
