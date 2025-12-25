@@ -22,7 +22,6 @@ impl Worker {
                 let job = receiver.lock().unwrap().recv();
                 match job {
                     Ok(job) => {
-                        println!("Worker {id} got a job, executing");
                         job();
                     }
                     Err(e) => {
