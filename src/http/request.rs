@@ -2,12 +2,16 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
 use std::net::TcpStream;
 
+use crate::http::filter::Context;
+use crate::http::response::IntoResponse;
+use crate::http::{Filter, Response};
+
 use super::Method;
 
 #[derive(Debug, Clone)]
 pub struct Request {
     method: Method,
-    path: String,
+    path_segments: Vec<String>,
     headers: HashMap<String, String>,
     body: Option<Vec<u8>>,
 }
@@ -17,8 +21,16 @@ impl Request {
         &self.method
     }
 
-    pub fn path(&self) -> &str {
-        &self.path
+    pub fn path(&self) -> String {
+        self.path_segments.join("/")
+    }
+
+    pub fn path_segments(&self) -> &Vec<String> {
+        &self.path_segments
+    }
+
+    pub fn path_segment(&self, index: usize) -> Option<&str> {
+        self.path_segments.get(index).map(|s| s.as_str())
     }
 
     pub fn headers(&self) -> &HashMap<String, String> {
@@ -51,6 +63,8 @@ impl Request {
         let method_str = *parts.get(0).ok_or(ParseError::MalformedRequest)?;
         let path = *parts.get(1).ok_or(ParseError::MalformedRequest)?;
 
+        let path_segments = path.split('/').map(|s| s.to_string()).collect();
+
         let method: Method = method_str
             .parse()
             .map_err(|_| ParseError::UnrecognizedMethod)?;
@@ -79,7 +93,7 @@ impl Request {
 
         Ok(Request {
             method,
-            path: path.to_string(),
+            path_segments,
             headers,
             body,
         })
@@ -106,3 +120,19 @@ impl std::fmt::Display for ParseError {
 }
 
 impl std::error::Error for ParseError {}
+
+pub trait RequestHandler: Send + Sync {
+    fn handle(&self, req: &Request) -> Response;
+}
+
+impl<A: Filter> RequestHandler for A
+where
+    A::Extract: IntoResponse,
+{
+    fn handle(&self, req: &Request) -> Response {
+        let mut ctx = Context::new(req);
+        self.filter(&mut ctx)
+            .map(|r| r.into_response())
+            .unwrap_or(Response::not_found())
+    }
+}

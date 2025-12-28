@@ -1,8 +1,8 @@
 use std::net::TcpListener;
 use std::sync::Arc;
 
-use super::{Request, Router};
-use crate::threads::ThreadPool;
+use super::Request;
+use crate::{http::request::RequestHandler, threads::ThreadPool};
 
 pub struct ServerConfig {
     pub address: String,
@@ -49,17 +49,17 @@ impl Server {
         Ok(Server { listener, pool })
     }
 
-    pub fn run(self, router: Router) {
-        let router = Arc::new(router);
+    pub fn run(self, handler: impl RequestHandler + 'static) {
+        let handler = Arc::new(handler);
 
         for stream in self.listener.incoming() {
             match stream {
                 Ok(mut stream) => {
-                    let router = Arc::clone(&router);
+                    let handler = Arc::clone(&handler);
 
                     self.pool.execute(move || match Request::parse(&stream) {
                         Ok(request) => {
-                            let response = router.handle(&request);
+                            let response = handler.handle(&request);
                             if let Err(e) = response.write_to_stream(&mut stream) {
                                 eprintln!("Error writing response: {}", e);
                             }
