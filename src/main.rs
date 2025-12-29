@@ -1,22 +1,16 @@
-mod http;
-mod threads;
-
-use http::{Response, Server, ServerConfig};
-
-use crate::http::{Filter, get, header};
+use rustserve::http::{Filter, get};
+use rustserve::http::{Response, Server, ServerConfig};
 
 fn main() {
-    let h = get("/hello")
-        .maybe(header("def"))
-        .map(|(a,)| format!("hello world {:?}", a))
-        .map(|s| Response::ok(s));
+    println!("See examples/routes.rs for more comprehensive examples.");
+    println!("Starting basic server...");
+
+    let hello = get("/hello").map(|_| Response::ok("Hello from rustserve main!"));
 
     let config = ServerConfig::new("127.0.0.1", 7878).threads(20);
+    println!("Listening on http://127.0.0.1:7878");
 
-    println!("Starting server at http://127.0.0.1:7878");
-
-    match Server::new(config) {
-        Ok(server) => server.run(h),
-        Err(e) => eprintln!("Failed to start server: {}", e),
+    if let Ok(server) = Server::new(config) {
+        server.run(hello);
     }
 }

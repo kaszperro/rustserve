@@ -131,8 +131,13 @@ where
 {
     fn handle(&self, req: &Request) -> Response {
         let mut ctx = Context::new(req);
-        self.filter(&mut ctx)
-            .map(|r| r.into_response())
+        let res = self.filter(&mut ctx);
+
+        if !ctx.is_path_matched() {
+            return Response::not_found();
+        }
+
+        res.map(|r| r.into_response())
             .unwrap_or(Response::not_found())
     }
 }

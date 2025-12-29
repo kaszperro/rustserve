@@ -1,5 +1,6 @@
-use crate::http::{Method, Request};
+use crate::http::{Method, Request, Response, response::IntoResponse};
 
+#[derive(Clone)]
 pub struct Context<'a> {
     request: &'a Request,
     path_index: usize,
@@ -11,6 +12,16 @@ impl<'a> Context<'a> {
             request,
             path_index: 0,
         }
+    }
+
+    pub fn is_path_matched(&self) -> bool {
+        self.path_index == self.request.path_segments().len()
+    }
+
+    pub(crate) fn next_segment(&mut self) -> Option<&str> {
+        let res = self.request.path_segment(self.path_index);
+        self.path_index += 1;
+        res
     }
 }
 
@@ -34,15 +45,27 @@ pub trait Filter: Sized + Send + Sync {
         }
     }
 
-    fn path(self, path: &str) -> Path<Self> {
-        Path {
-            filter: self,
+    fn path(self, path: &str) -> And<Self, Path> {
+        self.and(Path {
             path: path.to_string(),
-        }
+        })
+    }
+
+    fn param<T: From<String> + Send + Sync>(self) -> And<Self, PathParam<T>> {
+        self.and(PathParam::new())
+    }
+
+    fn or<B: Filter>(self, other: B) -> Or<Self, B> {
+        Or { a: self, b: other }
     }
 }
 
 pub struct And<A: Filter, B: Filter> {
+    a: A,
+    b: B,
+}
+
+pub struct Or<A: Filter, B: Filter> {
     a: A,
     b: B,
 }
@@ -57,25 +80,33 @@ pub struct Maybe<A: Filter, B: Filter> {
     other: B,
 }
 
-pub struct Path<A: Filter> {
-    filter: A,
+pub struct Path {
     path: String,
 }
 
-impl<A: Filter> Filter for Path<A> {
-    type Extract = A::Extract;
+pub struct PathParam<T: From<String>> {
+    _marker: std::marker::PhantomData<T>,
+}
+
+impl<T: From<String>> PathParam<T> {
+    pub fn new() -> Self {
+        PathParam {
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl Filter for Path {
+    type Extract = ();
 
     fn filter(&self, ctx: &mut Context) -> Option<Self::Extract> {
-        let filter = self.filter.filter(ctx)?;
-
         for segment in self.path.split('/') {
-            if ctx.request.path_segment(ctx.path_index) != Some(segment) {
+            if ctx.next_segment() != Some(segment) {
                 return None;
             }
-            ctx.path_index += 1;
         }
 
-        Some(filter)
+        Some(())
     }
 }
 
@@ -97,6 +128,14 @@ impl<T> OneTuple for (T,) {
 
     fn extract(self) -> Self::Extract {
         self.0
+    }
+}
+
+impl<T: From<String> + Send + Sync> Filter for PathParam<T> {
+    type Extract = (T,);
+
+    fn filter(&self, ctx: &mut Context) -> Option<Self::Extract> {
+        ctx.next_segment().map(|s| (T::from(s.to_string()),))
     }
 }
 
@@ -124,6 +163,22 @@ where
         let a = self.a.filter(ctx)?;
         let b = self.b.filter(ctx)?;
         Some(a.combine(b))
+    }
+}
+
+impl<A: Filter, B: Filter> Filter for Or<A, B>
+where
+    A::Extract: IntoResponse,
+    B::Extract: IntoResponse,
+{
+    type Extract = Response;
+
+    fn filter(&self, ctx: &mut Context) -> Option<Self::Extract> {
+        if let Some(a) = self.a.filter(&mut ctx.clone()) {
+            Some(a.into_response())
+        } else {
+            self.b.filter(&mut ctx.clone()).map(|b| b.into_response())
+        }
     }
 }
 
@@ -203,9 +258,12 @@ pub fn post(path: &str) -> impl Filter<Extract = ()> {
 
 pub fn path(path: &str) -> impl Filter<Extract = ()> {
     Path {
-        filter: (),
         path: path.to_string(),
     }
+}
+
+pub fn param<T: From<String> + Send + Sync>() -> impl Filter<Extract = (T,)> {
+    PathParam::new()
 }
 
 impl Filter for Method {
