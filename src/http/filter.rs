@@ -148,7 +148,13 @@ where
 
     fn filter(&self, ctx: &mut Context) -> Option<Self::Extract> {
         let a = self.filter.filter(ctx)?;
-        let b = (self.other.filter(ctx).map(|b| b.extract()),);
+
+        let mut sub_ctx = ctx.clone();
+        let b = (self.other.filter(&mut sub_ctx).map(|b| {
+            *ctx = sub_ctx;
+            b.extract()
+        }),);
+
         Some(a.combine(b))
     }
 }
@@ -174,10 +180,17 @@ where
     type Extract = Response;
 
     fn filter(&self, ctx: &mut Context) -> Option<Self::Extract> {
-        if let Some(a) = self.a.filter(&mut ctx.clone()) {
+        let mut a_ctx = ctx.clone();
+        if let Some(a) = self.a.filter(&mut a_ctx) {
+            *ctx = a_ctx;
             Some(a.into_response())
         } else {
-            self.b.filter(&mut ctx.clone()).map(|b| b.into_response())
+            let mut b_ctx = ctx.clone();
+            let res = self.b.filter(&mut b_ctx).map(|b| {
+                *ctx = b_ctx;
+                b.into_response()
+            });
+            res
         }
     }
 }
