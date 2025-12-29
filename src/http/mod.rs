@@ -4,7 +4,7 @@ mod request;
 mod response;
 mod server;
 
-pub use filter::{Filter, get, header, param, path, post};
+pub use filter::{Filter, end, get, header, param, path, post};
 pub use method::Method;
 pub use request::Request;
 pub use response::Response;

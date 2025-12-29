@@ -17,6 +17,32 @@ pub struct Request {
 }
 
 impl Request {
+    pub fn new(
+        method: Method,
+        path: &str,
+        headers: HashMap<String, String>,
+        body: Option<Vec<u8>>,
+    ) -> Self {
+        let path_segments = path
+            .trim_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect();
+
+        let headers = headers
+            .into_iter()
+            .map(|(k, v)| (k.to_lowercase(), v))
+            .collect();
+
+        Request {
+            method,
+            path_segments,
+            headers,
+            body,
+        }
+    }
+
     pub fn method(&self) -> &Method {
         &self.method
     }
