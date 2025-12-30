@@ -222,7 +222,7 @@ impl<A: Filter, B: Filter> Filter for Or<A, B> {
 impl<A, B, F> Filter for Map<A, B, F>
 where
     A: Filter,
-    F: Fn(A::Extract) -> B + Send + Sync + 'static,
+    F: Fn(A::Extract) -> B + Send + Sync,
 {
     type Extract = B;
 
