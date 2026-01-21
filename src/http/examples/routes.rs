@@ -1,4 +1,4 @@
-use rustserve::http::{Filter, get, header, param, post};
+use rustserve::http::{get, header, param, post, Filter};
 use rustserve::http::{Response, Server, ServerConfig};
 
 fn main() {
