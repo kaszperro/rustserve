@@ -1,4 +1,4 @@
-use crate::http::{Method, Request, Response, response::IntoResponse};
+use crate::http::{response::IntoResponse, Method, Request, Response};
 
 #[derive(Clone)]
 pub struct Context<'a> {
@@ -20,6 +20,9 @@ impl<'a> Context<'a> {
 
     pub(crate) fn next_segment(&mut self) -> Option<&str> {
         let res = self.request.path_segment(self.path_index);
+        if res.is_none() {
+            return None;
+        }
         self.path_index += 1;
         res
     }
@@ -52,7 +55,11 @@ pub trait Filter: Sized + Send + Sync {
     }
 
     fn param<T: From<String> + Send + Sync>(self) -> And<Self, PathParam<T>> {
-        self.and(PathParam::new())
+        self.and(PathParam::new(false))
+    }
+
+    fn param_slashes<T: From<String> + Send + Sync>(self) -> And<Self, PathParam<T>> {
+        self.and(PathParam::new(true))
     }
 
     fn or<B: Filter>(self, other: B) -> Or<Self, B> {
@@ -100,12 +107,14 @@ impl Filter for End {
 
 pub struct PathParam<T: From<String>> {
     _marker: std::marker::PhantomData<T>,
+    match_slashes: bool,
 }
 
 impl<T: From<String>> PathParam<T> {
-    pub fn new() -> Self {
+    pub fn new(match_slashes: bool) -> Self {
         PathParam {
             _marker: std::marker::PhantomData,
+            match_slashes: match_slashes,
         }
     }
 }
@@ -149,7 +158,16 @@ impl<T: From<String> + Send + Sync> Filter for PathParam<T> {
     type Extract = (T,);
 
     fn filter(&self, ctx: &mut Context) -> Option<Self::Extract> {
-        ctx.next_segment().map(|s| (T::from(s.to_string()),))
+        if self.match_slashes {
+            let mut segments = Vec::new();
+            while let Some(segment) = ctx.next_segment() {
+                segments.push(segment.to_string());
+            }
+
+            Some((T::from(segments.join("/")),))
+        } else {
+            ctx.next_segment().map(|s| (T::from(s.to_string()),))
+        }
     }
 }
 
@@ -269,6 +287,14 @@ impl<A, B, C> Combiner<(C,)> for (A, B) {
     }
 }
 
+impl<A, B, C, D> Combiner<(D,)> for (A, B, C) {
+    type Extract = (A, B, C, D);
+
+    fn combine(self, other: (D,)) -> Self::Extract {
+        (self.0, self.1, self.2, other.0)
+    }
+}
+
 pub struct Header {
     name: &'static str,
 }
@@ -304,7 +330,7 @@ pub fn end() -> End {
 }
 
 pub fn param<T: From<String> + Send + Sync>() -> impl Filter<Extract = (T,)> {
-    PathParam::new()
+    PathParam::new(false)
 }
 
 impl Filter for Method {

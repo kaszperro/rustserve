@@ -4,4 +4,8 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Kasper Sapała"]
 
+[[bin]]
+name = "rustserve"
+path = "src/bin/rustserve.rs"
+
 [dependencies]

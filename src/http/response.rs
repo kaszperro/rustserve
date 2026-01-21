@@ -54,6 +54,10 @@ impl Response {
             .header("Content-Type", "text/html; charset=utf-8")
     }
 
+    pub fn file(file_content: &[u8]) -> Self {
+        Response::ok(file_content.to_vec()).header("Content-Type", "application/octet-stream")
+    }
+
     pub fn created() -> Self {
         Response::new(201)
     }
